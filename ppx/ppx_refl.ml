@@ -1,3 +1,5 @@
+[%%metapackage "metapp"]
+
 open Common
 
 (*
@@ -354,7 +356,7 @@ let var_of_core_type (ty : Ppxlib.core_type) =
   match var_of_core_type_opt ty with
   | Some var -> var
   | None ->
-      Location.raise_errorf ~loc:!Ast_helper.default_loc
+      Ppxlib.Location.raise_errorf ~loc:!Ast_helper.default_loc
         "Type variable expected but '%a' found" Ppxlib.Pprintast.core_type ty
 
 let make_index (f : 'a -> string option) (l : 'a list) (count : int) :
@@ -529,7 +531,7 @@ let () =
     match exc with
     | Exists (loc, name) ->
         Some (Format.asprintf "@[Exists@ (@[%a@],@[%a@])@]"
-          Location.print_loc loc (Format.pp_print_option Format.pp_print_string)
+          Ppxlib.Location.print loc (Format.pp_print_option Format.pp_print_string)
           name)
     | _ -> None)
 
@@ -808,7 +810,7 @@ let accessors_of_row_field (ty : Ppxlib.core_type Lazy.t) i
             [%expr ([%e ReflValueExp.var arg] :> [%t Lazy.force ty])] in
           var arg, choice expr pat
       | _ ->
-          Location.raise_errorf ~loc:!Ppxlib.Ast_helper.default_loc
+          Ppxlib.Location.raise_errorf ~loc:!Ppxlib.Ast_helper.default_loc
             "refl cannot be derived for such polymorphic variants"
     let choice = choice_of_int i sequence
   end in
@@ -1008,7 +1010,7 @@ let structure_of_object_field structure_of_type context
           [%expr fun () -> [%e Metapp.Exp.send [%expr c] label]]) in
       structure, construct
   | Oinherit _ ->
-      Location.raise_errorf ~loc
+      Ppxlib.Location.raise_errorf ~loc
         "ppx_refl does not support object inheritance"
 
 let delays_dot = refl_dot "Delays"
@@ -1168,16 +1170,22 @@ let rec structure_of_type context (ty : Ppxlib.core_type)
         structure_of_variant structure_of_type context fields
     | { ptyp_desc = Ptyp_object (methods, closed_flag); _ } ->
         if closed_flag = Open then
-          Location.raise_errorf ~loc:!Ppxlib.Ast_helper.default_loc
+          Ppxlib.Location.raise_errorf ~loc:!Ppxlib.Ast_helper.default_loc
             "Open object types are not supported by ppx_refl";
         context.constraints |> Metapp.mutate
           (Constraints.add_direct_kind "Object");
         structure_of_object structure_of_type context methods
     | { ptyp_desc = Ptyp_alias (ty, name); _ } ->
+        let name = [%meta
+          if Metapp.ast_version >= (5, 2) then [%e name.txt]
+          else [%e name]] in
         let var = name_free_variable context name in
         var.bound <- true;
         let structure, desc = structure_of_type context ty in
-        Ppxlib.Ast_helper.Typ.alias structure var.name,
+        let alias_name = [%meta
+          if Metapp.ast_version >= (5, 2) then [%e Metapp.mkloc var.name]
+          else [%e var.name]] in
+        Ppxlib.Ast_helper.Typ.alias structure alias_name,
         Ppxlib.Ast_helper.Exp.let_ Recursive [Ppxlib.Ast_helper.Vb.mk
           (Metapp.Pat.var var.name) desc]
           (Metapp.Exp.var var.name)
@@ -1187,7 +1195,7 @@ let rec structure_of_type context (ty : Ppxlib.core_type)
             (vars |> List.map (fun var -> Some (Metapp.Typ.poly_name var))))} in
         structure_of_type context ty
     | _ ->
-        Location.raise_errorf ~loc:!Ppxlib.Ast_helper.default_loc "Unsupported type" in
+        Ppxlib.Location.raise_errorf ~loc:!Ppxlib.Ast_helper.default_loc "Unsupported type" in
   match Metapp.Attr.chop "opaque" ty.ptyp_attributes with
   | Some (_, attributes) ->
       let ty = { ty with ptyp_attributes = attributes } in
@@ -1259,12 +1267,12 @@ let extract_gadt_equalities context
         | { ptyp_desc = Ptyp_constr ({ txt = Lident name; _ }, args); _ }
           when Some name = context.name -> args
         | _ ->
-            Location.raise_errorf ~loc:!Ppxlib.Ast_helper.default_loc
+            Ppxlib.Location.raise_errorf ~loc:!Ppxlib.Ast_helper.default_loc
               "Type constructor '%s' expected" (Option.get context.name) in
       let arg_count = List.length args in
       let arity = StringIndexer.count context.vars in
       if arg_count <> arity then
-        Location.raise_errorf ~loc:!Ppxlib.Ast_helper.default_loc
+        Ppxlib.Location.raise_errorf ~loc:!Ppxlib.Ast_helper.default_loc
 "Type constructor '%s' has %d parameters but %d arguments given"
           (Option.get context.name) arity arg_count;
       let add_eq (eqs, vars) arg =
@@ -1813,10 +1821,10 @@ let structure_of_constructor single_constructor context count i
     | None ->
         match name with
         | None ->
-            Location.raise_errorf ~loc
+            Ppxlib.Location.raise_errorf ~loc
               "Free variable types are not allowed outside GADT constructors"
         | Some name ->
-            Location.raise_errorf ~loc
+            Ppxlib.Location.raise_errorf ~loc
               "The type variable '%s is unbound in this type declaration." name
 
 let temp_binding_count = ref 0
@@ -1924,12 +1932,12 @@ let structure_of_type_declaration context (td : Ppxlib.type_declaration)
     | Ptype_abstract ->
         begin match td.ptype_manifest with
         | None ->
-            Location.raise_errorf ~loc:!Ppxlib.Ast_helper.default_loc
+            Ppxlib.Location.raise_errorf ~loc:!Ppxlib.Ast_helper.default_loc
               "refl cannot be derived for fully abstract types"
         | Some ty -> (structure_of_type context ty), ([], [], [])
         end
     | Ptype_open ->
-        Location.raise_errorf ~loc:!Ppxlib.Ast_helper.default_loc
+        Ppxlib.Location.raise_errorf ~loc:!Ppxlib.Ast_helper.default_loc
           "refl cannot be derived for open types" in
   let structure = [%type: [`Name of [%t structure]]] in
   let unwrapped_desc = [%expr Refl.Name {
@@ -2116,10 +2124,14 @@ let module_of_type_structure rec_group constraints i type_structure
   let type_loc = List.map Metapp.mkloc context.type_args in
   let desc =
     List.fold_right Metapp.Exp.newtype type_loc unwrapped_desc in
+  (* OCaml >= 5.4 rejects [Ptyp_poly] with no variables. *)
+  let desc_def_type =
+    match type_loc with
+    | [] -> desc_type
+    | _ -> Metapp.Typ.poly type_loc desc_type in
   let desc_def =
     Ppxlib.Ast_helper.Vb.mk
-      [%pat? ([%p Metapp.Pat.var desc_name] :
-        [%t Metapp.Typ.poly type_loc desc_type])]
+      [%pat? ([%p Metapp.Pat.var desc_name] : [%t desc_def_type])]
       desc
       ~attrs:[Metapp.Attr.mk (Metapp.mkloc "ocaml.warning")
         (PStr [%str "-32-34"])] in

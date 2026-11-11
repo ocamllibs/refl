@@ -1,3 +1,9 @@
+(* Use ppxlib's AST: from OCaml 5.4, ppxlib (>= 0.37) has its own
+   Longident, distinct from compiler-libs'. *)
+module Longident = Ppxlib.Longident
+module Asttypes = Ppxlib.Asttypes
+module Ast_helper = Ppxlib.Ast_helper
+
 module OrderedLongident = struct
   type t = Longident.t
 
