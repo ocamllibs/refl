@@ -30,7 +30,7 @@ module Make (Target : Metapp.ValueS) = struct
           match field with
           | Mono { label; desc; _ } ->
               (label, lift ?hook desc lifters value) in
-        (Longident.Lident label, value) :: accu in
+        (Ppxlib.Longident.Lident label, value) :: accu in
       let accu = Record.fold lift_record_field record [] in
       Target.record accu in
 
@@ -66,7 +66,7 @@ module Make (Target : Metapp.ValueS) = struct
           | Constructor.Tuple tuple -> Some (lift_tuple lifters' tuple)
           | Constructor.Record record -> Some (lift_record lifters' record) in
         Target.force_construct
-          (Metapp.mkloc (Longident.Lident destruct.name)) arg
+          (Metapp.mkloc (Ppxlib.Longident.Lident destruct.name)) arg
     | Variant { constructors; destruct; _ } ->
         let Variant.Destruct destruct =
           Variant.destruct constructors (destruct x) in
